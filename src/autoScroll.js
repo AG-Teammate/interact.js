@@ -20,6 +20,8 @@ const autoScroll = {
   isScrolling: false,
   prevTime: 0,
 
+  parentIframePageInfo: null, //Property to handle page info of parent iframe (iFrameResizer)
+
   start: function (interaction) {
     autoScroll.isScrolling = true;
     raf.cancel(autoScroll.i);
@@ -27,11 +29,17 @@ const autoScroll = {
     autoScroll.interaction = interaction;
     autoScroll.prevTime = new Date().getTime();
     autoScroll.i = raf.request(autoScroll.scroll);
+    if (typeof window !== undefined && window.parentIFrame) { //iFrameResizer
+        window.parentIFrame.getPageInfo(function(pageInfo) {
+            autoScroll.parentIframePageInfo = pageInfo;
+        });
+    }
   },
 
   stop: function () {
     autoScroll.isScrolling = false;
     raf.cancel(autoScroll.i);
+    autoScroll.parentIframePageInfo = null; //iFrameResizer
   },
 
   // scroll the window by the values in scroll.x/y
@@ -45,6 +53,14 @@ const autoScroll = {
     const s = options.speed * dt;
 
     if (s >= 1) {
+      if (autoScroll.parentIframePageInfo && autoScroll.parentIframePageInfo.innerHeight) { //iFrameResizer
+        autoScroll.parentIframePageInfo.scrollLeft += autoScroll.x * s;
+        autoScroll.parentIframePageInfo.scrollTop += autoScroll.y * s;
+          if (autoScroll.x != 0 || autoScroll.y != 0) {
+            window.parentIFrame.scrollTo(autoScroll.parentIframePageInfo.scrollLeft,
+             autoScroll.parentIframePageInfo.scrollTop);
+          }
+      }
       if (is.window(container)) {
         container.scrollBy(autoScroll.x * s, autoScroll.y * s);
       }
@@ -85,7 +101,21 @@ const autoScroll = {
     const options = interaction.target.options[interaction.prepared.name].autoScroll;
     const container = options.container || getWindow(interaction.element);
 
-    if (is.window(container)) {
+    if (autoScroll.parentIframePageInfo && autoScroll.parentIframePageInfo.innerHeight) { //iFrameResizer
+        //calculate real pointer coordinates on the screen
+        let screenX = pointer.clientX -
+            autoScroll.parentIframePageInfo.scrollLeft +
+            autoScroll.parentIframePageInfo.offsetLeft;
+        let screenY = pointer.clientY -
+            autoScroll.parentIframePageInfo.scrollTop +
+            autoScroll.parentIframePageInfo.offsetTop;
+
+        left = screenX < autoScroll.margin;
+        top = screenY < autoScroll.margin;
+        right = screenX > autoScroll.parentIframePageInfo.innerWidth - autoScroll.margin;
+        bottom = screenY > autoScroll.parentIframePageInfo.innerHeight - autoScroll.margin;
+    }
+    else if (is.window(container)) {
       left   = pointer.clientX < autoScroll.margin;
       top    = pointer.clientY < autoScroll.margin;
       right  = pointer.clientX > container.innerWidth  - autoScroll.margin;
